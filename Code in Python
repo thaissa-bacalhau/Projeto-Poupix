@@ -1,0 +1,318 @@
+---- Base de dados ----
+
+import sqlite3 as l3
+
+#criando conexão
+con = l3.connect("p_db.db")
+#criando tabela de categoria
+
+with con:
+    cur = con.cursor()
+    cur.execute( ''' CREATE TABLE IF NOT EXISTS Categoria (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        nome TEXT
+        )
+    ''')
+#criando tabela receitas (ligado à Categoria)
+
+cur.execute( ''' CREATE TABLE IF NOT EXISTS Receitas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        categoria_id INTEGER,
+        add_em DATE,
+        valor DECIMAL,
+        FOREIGN KEY (categoria_id) REFERENCES Categoria(id)
+        )
+    ''')
+#criando tabela de gastos
+cur.execute( ''' CREATE TABLE IF NOT EXISTS Gastos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        categoria_id INTEGER, 
+        nome TEXT,
+        gasto_em DATE,
+        valor DECIMAL,
+        FOREIGN KEY (categoria_id) REFERENCES Categoria(id)
+        )
+    ''')
+
+
+--- Main ----
+
+# view.py
+import sqlite3 as l3
+
+# ligação à BD (thread-safe para Tkinter)
+con = l3.connect("p_db.db", check_same_thread=False)
+con.execute("PRAGMA foreign_keys = ON")
+
+
+# ----------------------- INSERÇÕES -----------------------
+def inserir_categoria(i):
+    """i = [nome]"""
+    with con:
+        con.execute("INSERT INTO Categoria (nome) VALUES (?)", i)
+
+
+def inserir_receitas(i):
+    """i = [categoria_id, add_em, valor]"""
+    with con:
+        con.execute("INSERT INTO Receitas (categoria_id, add_em, valor) VALUES (?,?,?)", i)
+
+
+def inserir_gastos(i):
+    """i = [categoria_id, gasto_em, valor]"""
+    with con:
+        con.execute("INSERT INTO Gastos (categoria_id, gasto_em, valor) VALUES (?,?,?)", i)
+
+
+# ----------------------- ATUALIZAÇÕES ---------------------
+def atualizar_gasto(id_, categoria_id, gasto_em, valor):
+    """Atualiza um registo em Gastos."""
+    with con:
+        con.execute(
+            "UPDATE Gastos SET categoria_id=?, gasto_em=?, valor=? WHERE id=?",
+            (categoria_id, gasto_em, valor, id_)
+        )
+
+
+# ----------------------- DELEÇÕES ------------------------
+def deletar_receitas(i):
+    with con:
+        con.execute("DELETE FROM Receitas WHERE id = ?", (i,))
+
+
+def deletar_gastos(i):
+    with con:
+        con.execute("DELETE FROM Gastos WHERE id = ?", (i,))
+
+
+# ----------------------- LISTAGENS -----------------------
+def ver_categoria():
+    """[(id, nome), ...]"""
+    with con:
+        cur = con.execute("SELECT * FROM Categoria")
+        return cur.fetchall()
+
+
+def ver_receitas():
+    with con:
+        cur = con.execute("SELECT * FROM Receitas")
+        return cur.fetchall()
+
+
+def ver_gastos():
+    with con:
+        cur = con.execute("SELECT * FROM Gastos")
+        return cur.fetchall()
+
+
+# ----------------------- TABELAS (para a Tree) -----------
+def tabela():
+    """Gastos com nome da categoria."""
+    with con:
+        cur = con.execute("""
+            SELECT g.id,
+                   COALESCE(c.nome, '(Sem categoria)') AS categoria,
+                   g.gasto_em AS data,
+                   g.valor
+              FROM Gastos g
+              LEFT JOIN Categoria c ON g.categoria_id = c.id
+        """)
+        return cur.fetchall()
+
+
+def tabela_receitas():
+    """Receitas com nome da categoria (se precisares noutro ecrã)."""
+    with con:
+        cur = con.execute("""
+            SELECT r.id,
+                   COALESCE(c.nome, '(Sem categoria)') AS categoria,
+                   r.add_em AS data,
+                   r.valor
+              FROM Receitas r
+              LEFT JOIN Categoria c ON r.categoria_id = c.id
+        """)
+        return cur.fetchall()
+
+
+# ----------------------- AGREGAÇÕES p/ GRÁFICOS ----------
+def totais_receitas_gastos():
+    with con:
+        r = con.execute("SELECT COALESCE(SUM(CAST(REPLACE(valor, ',', '.') AS REAL)),0) FROM Receitas").fetchone()[
+                0] or 0.0
+        g = con.execute("SELECT COALESCE(SUM(CAST(REPLACE(valor, ',', '.') AS REAL)),0) FROM Gastos").fetchone()[
+                0] or 0.0
+    return float(r), float(g)
+
+
+def despesas_por_categoria():
+    """[(nome, total_float), ...]"""
+    with con:
+        cur = con.execute("""
+            SELECT
+                COALESCE(c.nome, '(Sem categoria)') AS nome_cat,
+                COALESCE(SUM(CAST(REPLACE(g.valor, ',', '.') AS REAL)), 0) AS total
+            FROM Gastos g
+            LEFT JOIN Categoria c ON c.id = g.categoria_id
+            GROUP BY c.nome
+            HAVING COALESCE(SUM(CAST(REPLACE(g.valor, ',', '.') AS REAL)), 0) > 0
+            ORDER BY total DESC
+        """)
+        return [(r[0], float(r[1] or 0)) for r in cur.fetchall()]
+
+
+def receitas_por_categoria():
+    """[(nome, total_float), ...]"""
+    with con:
+        cur = con.execute("""
+            SELECT
+                COALESCE(c.nome, '(Sem categoria)') AS nome_cat,
+                COALESCE(SUM(CAST(REPLACE(r.valor, ',', '.') AS REAL)), 0) AS total
+            FROM Receitas r
+            LEFT JOIN Categoria c ON c.id = r.categoria_id
+            GROUP BY c.nome
+            HAVING COALESCE(SUM(CAST(REPLACE(r.valor, ',', '.') AS REAL)), 0) > 0
+            ORDER BY total DESC
+        """)
+        return [(r[0], float(r[1] or 0)) for r in cur.fetchall()]
+
+---- View ----
+
+# view.py
+import sqlite3 as l3
+
+# ligação à BD (thread-safe para Tkinter)
+con = l3.connect("p_db.db", check_same_thread=False)
+con.execute("PRAGMA foreign_keys = ON")
+
+
+# ----------------------- INSERÇÕES -----------------------
+def inserir_categoria(i):
+    """i = [nome]"""
+    with con:
+        con.execute("INSERT INTO Categoria (nome) VALUES (?)", i)
+
+
+def inserir_receitas(i):
+    """i = [categoria_id, add_em, valor]"""
+    with con:
+        con.execute("INSERT INTO Receitas (categoria_id, add_em, valor) VALUES (?,?,?)", i)
+
+
+def inserir_gastos(i):
+    """i = [categoria_id, gasto_em, valor]"""
+    with con:
+        con.execute("INSERT INTO Gastos (categoria_id, gasto_em, valor) VALUES (?,?,?)", i)
+
+
+# ----------------------- ATUALIZAÇÕES ---------------------
+def atualizar_gasto(id_, categoria_id, gasto_em, valor):
+    """Atualiza um registo em Gastos."""
+    with con:
+        con.execute(
+            "UPDATE Gastos SET categoria_id=?, gasto_em=?, valor=? WHERE id=?",
+            (categoria_id, gasto_em, valor, id_)
+        )
+
+
+# ----------------------- DELEÇÕES ------------------------
+def deletar_receitas(i):
+    with con:
+        con.execute("DELETE FROM Receitas WHERE id = ?", (i,))
+
+
+def deletar_gastos(i):
+    with con:
+        con.execute("DELETE FROM Gastos WHERE id = ?", (i,))
+
+
+# ----------------------- LISTAGENS -----------------------
+def ver_categoria():
+    """[(id, nome), ...]"""
+    with con:
+        cur = con.execute("SELECT * FROM Categoria")
+        return cur.fetchall()
+
+
+def ver_receitas():
+    with con:
+        cur = con.execute("SELECT * FROM Receitas")
+        return cur.fetchall()
+
+
+def ver_gastos():
+    with con:
+        cur = con.execute("SELECT * FROM Gastos")
+        return cur.fetchall()
+
+
+# ----------------------- TABELAS (para a Tree) -----------
+def tabela():
+    """Gastos com nome da categoria."""
+    with con:
+        cur = con.execute("""
+            SELECT g.id,
+                   COALESCE(c.nome, '(Sem categoria)') AS categoria,
+                   g.gasto_em AS data,
+                   g.valor
+              FROM Gastos g
+              LEFT JOIN Categoria c ON g.categoria_id = c.id
+        """)
+        return cur.fetchall()
+
+
+def tabela_receitas():
+    """Receitas com nome da categoria (se precisares noutro ecrã)."""
+    with con:
+        cur = con.execute("""
+            SELECT r.id,
+                   COALESCE(c.nome, '(Sem categoria)') AS categoria,
+                   r.add_em AS data,
+                   r.valor
+              FROM Receitas r
+              LEFT JOIN Categoria c ON r.categoria_id = c.id
+        """)
+        return cur.fetchall()
+
+
+# ----------------------- AGREGAÇÕES p/ GRÁFICOS ----------
+def totais_receitas_gastos():
+    with con:
+        r = con.execute("SELECT COALESCE(SUM(CAST(REPLACE(valor, ',', '.') AS REAL)),0) FROM Receitas").fetchone()[
+                0] or 0.0
+        g = con.execute("SELECT COALESCE(SUM(CAST(REPLACE(valor, ',', '.') AS REAL)),0) FROM Gastos").fetchone()[
+                0] or 0.0
+    return float(r), float(g)
+
+
+def despesas_por_categoria():
+    """[(nome, total_float), ...]"""
+    with con:
+        cur = con.execute("""
+            SELECT
+                COALESCE(c.nome, '(Sem categoria)') AS nome_cat,
+                COALESCE(SUM(CAST(REPLACE(g.valor, ',', '.') AS REAL)), 0) AS total
+            FROM Gastos g
+            LEFT JOIN Categoria c ON c.id = g.categoria_id
+            GROUP BY c.nome
+            HAVING COALESCE(SUM(CAST(REPLACE(g.valor, ',', '.') AS REAL)), 0) > 0
+            ORDER BY total DESC
+        """)
+        return [(r[0], float(r[1] or 0)) for r in cur.fetchall()]
+
+
+def receitas_por_categoria():
+    """[(nome, total_float), ...]"""
+    with con:
+        cur = con.execute("""
+            SELECT
+                COALESCE(c.nome, '(Sem categoria)') AS nome_cat,
+                COALESCE(SUM(CAST(REPLACE(r.valor, ',', '.') AS REAL)), 0) AS total
+            FROM Receitas r
+            LEFT JOIN Categoria c ON c.id = r.categoria_id
+            GROUP BY c.nome
+            HAVING COALESCE(SUM(CAST(REPLACE(r.valor, ',', '.') AS REAL)), 0) > 0
+            ORDER BY total DESC
+        """)
+        return [(r[0], float(r[1] or 0)) for r in cur.fetchall()]
+
+
